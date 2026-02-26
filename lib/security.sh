@@ -16,8 +16,8 @@ setup_ssh_hardening() {
     local has_authorized_keys=false
     if [[ -n "$TARGET_USER" && "$TARGET_USER" != "nobody" ]]; then
         local user_home
-        user_home=$(eval echo "~${TARGET_USER}")
-        if [[ -s "${user_home}/.ssh/authorized_keys" ]]; then
+        user_home=$(getent passwd "$TARGET_USER" | cut -d: -f6)
+        if [[ -n "$user_home" && -s "${user_home}/.ssh/authorized_keys" ]]; then
             has_authorized_keys=true
         fi
     fi

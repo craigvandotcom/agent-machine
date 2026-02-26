@@ -97,7 +97,8 @@ do_rollback() {
     systemctl disable --now systemd-oomd 2>/dev/null || true
     log_ok "Disabled systemd-oomd"
 
-    # Note: we don't remove ufw/fail2ban — those are safe to leave running
+    # Note: we don't remove ufw, fail2ban, or unattended-upgrades
+    # — they're security packages that only help, and removing them could expose the server
 
     echo ""
     echo -e "${GREEN}Rollback complete. Reboot recommended for full effect.${NC}"

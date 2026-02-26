@@ -66,7 +66,7 @@ log_fail()    { echo -e "  ${RED}✗${NC} $1"; }
 # --- Preflight ---
 check_root() {
     if [[ $EUID -ne 0 ]]; then
-        echo -e "${RED}Run with sudo: sudo bash $0${NC}"
+        echo -e "${RED}Run with sudo: sudo bash install.sh${NC}"
         exit 1
     fi
 }
@@ -139,9 +139,6 @@ load_modules() {
     done
 }
 
-# --- Dry run mode ---
-DRY_RUN=false
-
 # =============================================================================
 # Commands
 # =============================================================================
@@ -159,6 +156,11 @@ cmd_full() {
     detect_hardware
     detect_user
     save_rollback
+
+    # Refresh package cache once (avoids stale cache on fresh VMs)
+    log_section "Updating Package Cache"
+    apt-get update -qq > /dev/null 2>&1
+    log_ok "Package cache updated"
 
     # Performance
     setup_swap
@@ -201,6 +203,8 @@ cmd_perf_only() {
     detect_user
     save_rollback
 
+    apt-get update -qq > /dev/null 2>&1
+
     setup_swap
     setup_zswap
     setup_sysctl
@@ -222,6 +226,8 @@ cmd_sec_only() {
     detect_hardware
     detect_user
     save_rollback
+
+    apt-get update -qq > /dev/null 2>&1
 
     setup_ssh_hardening
     setup_firewall

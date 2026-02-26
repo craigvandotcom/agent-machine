@@ -17,7 +17,6 @@ setup_monitoring() {
     dpkg -l linux-headers-"$(uname -r)" &>/dev/null 2>&1 || packages_to_install+=(linux-headers-"$(uname -r)")
 
     if [[ ${#packages_to_install[@]} -gt 0 ]]; then
-        apt-get update -qq > /dev/null 2>&1
         apt-get install -y -qq "${packages_to_install[@]}" > /dev/null 2>&1 || log_warn "Some packages failed to install"
         log_ok "Installed: ${packages_to_install[*]}"
     else
