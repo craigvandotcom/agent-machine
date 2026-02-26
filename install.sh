@@ -21,6 +21,7 @@
 #
 # What it does:
 #   Performance:
+#     0. Creates swap file if none exists (many cloud VMs ship with 0 swap)
 #     1. Enables zswap (compressed swap in RAM, ~3x compression)
 #     2. Tunes kernel via sysctl (memory, network BBR, I/O, scheduler)
 #     3. Configures systemd-oomd (proactive OOM defense)
@@ -98,23 +99,29 @@ check_os() {
 # --- Resolve library path (works for both curl|bash and local execution) ---
 resolve_lib_dir() {
     # If running from a local clone, use relative path
-    local script_dir
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    if [[ -d "${script_dir}/lib" ]]; then
+    # BASH_SOURCE[0] is empty or "bash"/"main" when piped via curl|bash
+    local script_dir=""
+    if [[ -n "${BASH_SOURCE[0]:-}" && "${BASH_SOURCE[0]}" != "bash" && "${BASH_SOURCE[0]}" != "main" ]]; then
+        script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || true
+    fi
+
+    if [[ -n "$script_dir" && -d "${script_dir}/lib" ]]; then
         LIB_DIR="${script_dir}/lib"
         return
     fi
 
-    # If running via curl|bash, download to temp dir
+    # Running via curl|bash — download modules to temp dir
     LIB_DIR=$(mktemp -d)
     TEMP_LIB_DIR="$LIB_DIR"  # track for cleanup
+    echo -e "  ${CYAN}→${NC} Downloading modules..."
     local base_url="https://raw.githubusercontent.com/craigvandotcom/agent-machine/main/lib"
-    for module in detect.sh performance.sh security.sh monitoring.sh verify.sh rollback.sh; do
+    for module in detect.sh swap.sh performance.sh security.sh monitoring.sh verify.sh rollback.sh; do
         curl -fsSL "${base_url}/${module}" -o "${LIB_DIR}/${module}" || {
-            echo -e "${RED}Failed to download ${module}${NC}"
+            echo -e "${RED}Failed to download ${module}. Check your internet connection.${NC}"
             exit 1
         }
     done
+    echo -e "  ${GREEN}✓${NC} Modules downloaded"
 }
 
 cleanup_temp() {
@@ -127,7 +134,7 @@ trap cleanup_temp EXIT
 # --- Source modules ---
 load_modules() {
     resolve_lib_dir
-    for module in detect.sh performance.sh security.sh monitoring.sh verify.sh rollback.sh; do
+    for module in detect.sh swap.sh performance.sh security.sh monitoring.sh verify.sh rollback.sh; do
         source "${LIB_DIR}/${module}"
     done
 }
@@ -154,6 +161,7 @@ cmd_full() {
     save_rollback
 
     # Performance
+    setup_swap
     setup_zswap
     setup_sysctl
     setup_oomd
@@ -193,6 +201,7 @@ cmd_perf_only() {
     detect_user
     save_rollback
 
+    setup_swap
     setup_zswap
     setup_sysctl
     setup_oomd
@@ -252,6 +261,13 @@ cmd_dry_run() {
     detect_user
 
     log_section "Performance Changes"
+    local current_swap_mb
+    current_swap_mb=$(awk '/SwapTotal/ {print int($2/1024)}' /proc/meminfo)
+    if [[ $current_swap_mb -eq 0 ]]; then
+        echo "  • swap: create swap file (none detected)"
+    else
+        echo "  • swap: ${current_swap_mb}MB already exists (no changes)"
+    fi
     echo "  • zswap: enable with zstd compression, ${ZSWAP_POOL_PCT}% pool"
     echo "  • sysctl: 40+ kernel parameters (BBR, memory, network, scheduler)"
     echo "  • systemd-oomd: proactive OOM defense (60% pressure threshold)"
@@ -267,6 +283,9 @@ cmd_dry_run() {
     echo "  • updates: automatic security patches (no auto-reboot)"
 
     log_section "Files Modified"
+    if [[ $current_swap_mb -eq 0 ]]; then
+        echo "  • /swapfile (new)"
+    fi
     echo "  • /etc/sysctl.d/99-agent-machine.conf (new)"
     echo "  • /etc/default/grub (append zswap params)"
     echo "  • /etc/fstab (add noatime)"

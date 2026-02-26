@@ -9,6 +9,15 @@ verify_performance() {
     log_section "Performance Verification"
     local issues=0
 
+    # Swap
+    local swap_total
+    swap_total=$(awk '/SwapTotal/ {print int($2/1024)}' /proc/meminfo)
+    if [[ $swap_total -gt 0 ]]; then
+        log_ok "Swap: ${swap_total}MB available"
+    else
+        log_fail "Swap: none configured (zswap needs swap to overflow to)"; issues=$((issues + 1))
+    fi
+
     # zswap
     local zswap_enabled
     zswap_enabled=$(cat /sys/module/zswap/parameters/enabled 2>/dev/null)
